@@ -9,8 +9,8 @@ import logging
 from datetime import datetime
 
 # === KONFIG TELEGRAM ===
-TELEGRAM_TOKEN = '7614084480:AAEvOO2OdfBgaVLt_dPhwPbMLRW7sKAY0Nc'
-CHAT_ID = '5986744500'
+TELEGRAM_TOKEN = '7035454220:AAF9OtWRsS4sIobpMIIFyhckEhlRYFDpGEA'
+CHAT_ID = '6593134178'
 
 # === KONFIG PAIR & TIMEFRAME ===
 PAIR = 'BTC/USDT'
@@ -57,7 +57,8 @@ def calculate_indicators(df):
 def bullish_engulfing(df):
     try:
         return df['close'].iloc[-1] > df['open'].iloc[-1] and df['open'].iloc[-2] > df['close'].iloc[-2]
-    except:
+    except Exception as e:
+        logging.error(f"Error bullish_engulfing: {e}")
         return False
 
 def bearish_pinbar(df):
@@ -66,7 +67,8 @@ def bearish_pinbar(df):
         body = abs(last['close'] - last['open'])
         wick = last['high'] - last['low']
         return body / wick < 0.3 and last['high'] - max(last['open'], last['close']) < wick * 0.2
-    except:
+    except Exception as e:
+        logging.error(f"Error bearish_pinbar: {e}")
         return False
 
 def multi_timeframe_analysis():
@@ -150,6 +152,8 @@ async def price_feed():
                 wick_low_now = df['low'].iloc[-1] < df['low'].iloc[-2] and df['close'].iloc[-1] > df['low'].iloc[-1] + (df['high'].iloc[-1] - df['low'].iloc[-1]) * 0.5
                 wick_high_now = df['high'].iloc[-1] > df['high'].iloc[-2] and df['close'].iloc[-1] < df['high'].iloc[-1] - (df['high'].iloc[-1] - df['low'].iloc[-1]) * 0.5
 
+                logging.info(f"long_trend_now={long_trend_now}, bullish_engulfing={bullish_engulfing(df)}, bearish_pinbar={bearish_pinbar(df)}, vol_spike_now={vol_spike_now}, wick_low_now={wick_low_now}, wick_high_now={wick_high_now}")
+
                 trend_1h_now, trend_4h_now = multi_timeframe_analysis()
                 sentiment_now = 'Netral'
                 macd_sentiment_now = 'Bullish' if df['macd'].iloc[-1] > 0 else 'Bearish'
@@ -170,33 +174,14 @@ async def price_feed():
                 msg = f"""
 📊 [Analisis Real-Time BTCUSDT]
 ⏰ Waktu: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
-💰 Harga: {price}
+💰 Harga: {price:.2f}
 📈 Tren Jangka Panjang: {'🔼 UP' if long_trend_now == 'UP' else '🔽 DOWN'}
-⏳ Multi Time Frame: 1H -> {('🔼 UP' if trend_1h_now == 'UP' else '🔽 DOWN') if trend_1h_now else '-'}, 4H -> {('🔼 UP' if trend_4h_now == 'UP' else '🔽 DOWN') if trend_4h_now else '-'}
-📊 Volume Spike: {'⚡ Ya' if vol_spike_now else '❌ Tidak'}
-🕯️ Pola Candlestick: {'🔥 Bullish Engulfing' if bullish_engulfing(df) else '🛑 Bearish Pinbar' if bearish_pinbar(df) else '— Tidak Ada'}
+⏳ Multi Time Frame: 1H -> {'🔼 UP' if trend_1h_now == 'UP' else '🔽 DOWN' if trend_1h_now == 'DOWN' else '-'}, 4H -> {'🔼 UP' if trend_4h_now == 'UP' else '🔽 DOWN' if trend_4h_now == 'DOWN' else '-'}
+📊 Volume Spike: {'✅ Ya' if vol_spike_now else '❌ Tidak'}
+🕯️ Pola Candlestick: {'🔥 Bullish Engulfing' if bullish_engulfing(df) else '📉 Bearish Pinbar' if bearish_pinbar(df) else '— Tidak Ada'}
 💡 Liquidity Grab: {'⬇️ Wick Down' if wick_low_now else '⬆️ Wick Up' if wick_high_now else '— Tidak Ada'}
 📉 Sentimen Pasar (RSI): {sentiment_now}
 📊 Sentimen MACD: {'📈 Bullish' if macd_sentiment_now == 'Bullish' else '📉 Bearish'}
 🌐 Tren Global: {global_trend_now}
-🚦 Sinyal: {('🟢 LONG' if bias == 'BUY' else '🔴 SHORT') if bias else '⚪ Tidak Ada setup yang valid'}
-🔖 Harga Entry: {(f'{entry_price:.2f}') if entry_price else '-'}
-🎯 Take Profit: {(f'{take_profit:.2f}') if take_profit else '-'}
-⛔ Stop Loss: {(f'{stop_loss:.2f}') if stop_loss else '-'}
-📊 Risk/Reward Ratio: {rr if rr else '-'}
-"""
-
-                send_to_telegram(msg)
-                await asyncio.sleep(1800)  # delay 30 menit
-
-            except Exception as e:
-                logging.error(f"Error di price_feed loop: {e}")
-                await asyncio.sleep(30)
-
-if __name__ == '__main__':
-    logging.info("Bot mulai berjalan...")
-    try:
-        asyncio.run(price_feed())
-    except Exception as e:
-        logging.error(f"Fatal error, bot berhenti: {e}")
-        send_to_telegram(f"Bot mengalami error fatal: {e}")
+🚦 Sinyal: {'🟢 ' + bias if bias else '⚪ Tidak Ada setup yang valid'}
+🔖 Harga Entry: {f'{entry_price
