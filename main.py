@@ -135,6 +135,7 @@ def risk_reward_ratio(entry, tp, sl):
         return None
 
 async def price_feed():
+    print("Bot berjalan... menunggu data")
     url = "wss://stream.binance.com:9443/ws/btcusdt@trade"
     async with websockets.connect(url) as websocket:
         while True:
