@@ -16,7 +16,6 @@ CHAT_ID = '6593134178'
 PAIR = 'BTC/USDT'
 LIMIT = 200
 
-# Setup logging
 logging.basicConfig(
     filename='trading_bot.log',
     level=logging.INFO,
@@ -53,6 +52,15 @@ def calculate_indicators(df):
         df['avg_vol'] = df['volume'].rolling(20).mean()
     except Exception as e:
         logging.error(f"Error calculating indicators: {e}")
+
+def find_support_resistance(df):
+    try:
+        support = df[df['low'] == df['low'].rolling(10).min()]['low'].iloc[-1]
+        resistance = df[df['high'] == df['high'].rolling(10).max()]['high'].iloc[-1]
+        return support, resistance
+    except Exception as e:
+        logging.error(f"Error finding support/resistance: {e}")
+        return None, None
 
 def bullish_engulfing(df):
     try:
@@ -101,11 +109,11 @@ def calculate_trade_levels(df, trade_type):
         entry_price = df['close'].iloc[-1]
         atr = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14).iloc[-1]
         if trade_type == 'LONG':
-            take_profit = entry_price + atr * 3  # sebelumnya 2
-            stop_loss = entry_price - atr * 1.5  # sebelumnya 1
+            take_profit = entry_price + atr * 4
+            stop_loss = entry_price - atr * 2
         elif trade_type == 'SHORT':
-            take_profit = entry_price - atr * 3
-            stop_loss = entry_price + atr * 1.5
+            take_profit = entry_price - atr * 4
+            stop_loss = entry_price + atr * 2
         else:
             return None, None, None
         return entry_price, take_profit, stop_loss
@@ -121,8 +129,7 @@ def risk_reward_ratio(entry, tp, sl):
         reward = abs(tp - entry)
         if risk == 0:
             return None
-        rr = reward / risk
-        return round(rr, 2)
+        return round(reward / risk, 2)
     except Exception as e:
         logging.error(f"Error calculating risk reward ratio: {e}")
         return None
@@ -139,35 +146,31 @@ async def price_feed():
 
                 df = fetch_ohlcv_safe(PAIR, '1m')
                 if df is None:
-                    logging.warning("Tidak bisa fetch OHLCV data, skip analisa.")
                     await asyncio.sleep(30)
                     continue
 
                 calculate_indicators(df)
+                trend_1h, trend_4h = multi_timeframe_analysis()
+                support, resistance = find_support_resistance(df)
+                global_trend_now = macro_global_trend(df)
 
                 long_trend_now = 'UP' if df['ema50'].iloc[-1] > df['ema200'].iloc[-1] else 'DOWN'
                 vol_spike_now = df['volume'].iloc[-1] > df['avg_vol'].iloc[-1] * 1.5
                 wick_low_now = df['low'].iloc[-1] < df['low'].iloc[-2] and df['close'].iloc[-1] > df['low'].iloc[-1] + (df['high'].iloc[-1] - df['low'].iloc[-1]) * 0.5
                 wick_high_now = df['high'].iloc[-1] > df['high'].iloc[-2] and df['close'].iloc[-1] < df['high'].iloc[-1] - (df['high'].iloc[-1] - df['low'].iloc[-1]) * 0.5
+                macd_sentiment = 'Bullish' if df['macd'].iloc[-1] > 0 else 'Bearish'
 
-                trend_1h_now, trend_4h_now = multi_timeframe_analysis()
-                sentiment_now = 'Netral'
-                macd_sentiment_now = 'Bullish' if df['macd'].iloc[-1] > 0 else 'Bearish'
-                global_trend_now = macro_global_trend(df)
-
-                bias = ''
                 entry_price, take_profit, stop_loss = None, None, None
+                rr = None
+                bias = ''
 
-                if long_trend_now == 'UP' and bullish_engulfing(df) and vol_spike_now and wick_low_now:
+                near_support = abs(price - support) <= (support * 0.005)
+                near_resistance = abs(price - resistance) <= (resistance * 0.005)
+
+                if long_trend_now == 'UP' and bullish_engulfing(df) and vol_spike_now and wick_low_now and near_support:
                     bias = 'BUY'
                     entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'LONG')
-                elif long_trend_now == 'DOWN' and bearish_pinbar(df) and vol_spike_now and wick_high_now:
-                    bias = 'SELL'
-                    entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'SHORT')
-                elif long_trend_now == 'UP' and df['macd'].iloc[-1] > 0 and df['rsi'].iloc[-1] < 70:
-                    bias = 'BUY'
-                    entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'LONG')
-                elif long_trend_now == 'DOWN' and df['macd'].iloc[-1] < 0 and df['rsi'].iloc[-1] > 30:
+                elif long_trend_now == 'DOWN' and bearish_pinbar(df) and vol_spike_now and wick_high_now and near_resistance:
                     bias = 'SELL'
                     entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'SHORT')
 
@@ -178,25 +181,26 @@ async def price_feed():
 ⏰ Waktu: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 💰 Harga: {price}
 📈 Tren Jangka Panjang: {'🔼 UP' if long_trend_now == 'UP' else '🔽 DOWN'}
-⏳ Multi Time Frame: 1H -> {('🔼 UP' if trend_1h_now == 'UP' else '🔽 DOWN') if trend_1h_now else '-'}, 4H -> {('🔼 UP' if trend_4h_now == 'UP' else '🔽 DOWN') if trend_4h_now else '-'}
+⏳ Multi Time Frame: 1H -> {trend_1h if trend_1h else '-'}, 4H -> {trend_4h if trend_4h else '-'}
 📊 Volume Spike: {'⚡ Ya' if vol_spike_now else '❌ Tidak'}
 🕯️ Pola Candlestick: {'🔥 Bullish Engulfing' if bullish_engulfing(df) else '🛑 Bearish Pinbar' if bearish_pinbar(df) else '— Tidak Ada'}
 💡 Liquidity Grab: {'⬇️ Wick Down' if wick_low_now else '⬆️ Wick Up' if wick_high_now else '— Tidak Ada'}
-📉 Sentimen Pasar (RSI): {sentiment_now}
-📊 Sentimen MACD: {'📈 Bullish' if macd_sentiment_now == 'Bullish' else '📉 Bearish'}
+📊 Sentimen MACD: {'📈 Bullish' if macd_sentiment == 'Bullish' else '📉 Bearish'}
 🌐 Tren Global: {global_trend_now}
-🚦 Sinyal: {('🟢 LONG' if bias == 'BUY' else '🔴 SHORT') if bias else '⚪ Tidak Ada setup yang valid'}
+🧭 Support: {support:.2f if support else '-'} | Resistance: {resistance:.2f if resistance else '-'}
+🚦 Sinyal: {('🟢 LONG' if bias == 'BUY' else '🔴 SHORT') if bias else '⚪ Tidak Ada setup valid'}
 🔖 Harga Entry: {(f'{entry_price:.2f}') if entry_price else '-'}
 🎯 Take Profit: {(f'{take_profit:.2f}') if take_profit else '-'}
 ⛔ Stop Loss: {(f'{stop_loss:.2f}') if stop_loss else '-'}
 📊 Risk/Reward Ratio: {rr if rr else '-'}
 """
+
                 if bias:
                     send_to_telegram(msg)
                 else:
-                    logging.info("Tidak ada setup valid, tidak kirim ke Telegram.")
+                    logging.info("Tidak ada setup valid.")
 
-                await asyncio.sleep(1800)  # delay 30 menit
+                await asyncio.sleep(900)  # 15 menit
 
             except Exception as e:
                 logging.error(f"Error di price_feed loop: {e}")
