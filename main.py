@@ -134,6 +134,8 @@ def risk_reward_ratio(entry, tp, sl):
         logging.error(f"Error calculating risk reward ratio: {e}")
         return None
 
+# (Semua import, konfigurasi, dan fungsi tetap sama seperti sebelumnya)
+
 async def price_feed():
     print("Bot berjalan... menunggu data")
     url = "wss://stream.binance.com:9443/ws/btcusdt@trade"
@@ -164,15 +166,32 @@ async def price_feed():
                 entry_price, take_profit, stop_loss = None, None, None
                 rr = None
                 bias = ''
+                setup_level = '❌ Tidak Ada Setup'
 
                 near_support = abs(price - support) <= (support * 0.005)
                 near_resistance = abs(price - resistance) <= (resistance * 0.005)
 
-                if long_trend_now == 'UP' and bullish_engulfing(df) and vol_spike_now and wick_low_now and near_support:
+                valid_buy = long_trend_now == 'UP' and bullish_engulfing(df) and vol_spike_now and wick_low_now and near_support
+                valid_sell = long_trend_now == 'DOWN' and bearish_pinbar(df) and vol_spike_now and wick_high_now and near_resistance
+
+                # Kondisi valid penuh
+                if valid_buy:
                     bias = 'BUY'
+                    setup_level = '✅ Setup Valid'
                     entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'LONG')
-                elif long_trend_now == 'DOWN' and bearish_pinbar(df) and vol_spike_now and wick_high_now and near_resistance:
+                elif valid_sell:
                     bias = 'SELL'
+                    setup_level = '✅ Setup Valid'
+                    entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'SHORT')
+
+                # Setup lemah
+                elif long_trend_now == 'UP' and macd_sentiment == 'Bullish' and near_support:
+                    bias = 'BUY'
+                    setup_level = '⚠️ Setup Lemah'
+                    entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'LONG')
+                elif long_trend_now == 'DOWN' and macd_sentiment == 'Bearish' and near_resistance:
+                    bias = 'SELL'
+                    setup_level = '⚠️ Setup Lemah'
                     entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'SHORT')
 
                 rr = risk_reward_ratio(entry_price, take_profit, stop_loss)
@@ -189,19 +208,17 @@ async def price_feed():
 📊 Sentimen MACD: {'📈 Bullish' if macd_sentiment == 'Bullish' else '📉 Bearish'}
 🌐 Tren Global: {global_trend_now}
 🧭 Support: {support:.2f if support else '-'} | Resistance: {resistance:.2f if resistance else '-'}
-🚦 Sinyal: {('🟢 LONG' if bias == 'BUY' else '🔴 SHORT') if bias else '⚪ Tidak Ada setup valid'}
+🚦 Sinyal: {('🟢 LONG' if bias == 'BUY' else '🔴 SHORT') if bias else '⚪ Tidak Ada setup'}
 🔖 Harga Entry: {(f'{entry_price:.2f}') if entry_price else '-'}
 🎯 Take Profit: {(f'{take_profit:.2f}') if take_profit else '-'}
 ⛔ Stop Loss: {(f'{stop_loss:.2f}') if stop_loss else '-'}
 📊 Risk/Reward Ratio: {rr if rr else '-'}
+⚙️ Status Setup: {setup_level}
 """
 
-                if bias:
-                    send_to_telegram(msg)
-                else:
-                    logging.info("Tidak ada setup valid.")
-
-                await asyncio.sleep(900)  # 15 menit
+                # Kirim semua analisis, bahkan jika tidak valid
+                send_to_telegram(msg)
+                await asyncio.sleep(900)
 
             except Exception as e:
                 logging.error(f"Error di price_feed loop: {e}")
