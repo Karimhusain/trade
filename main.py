@@ -184,4 +184,8 @@ async def price_feed():
 📊 Sentimen MACD: {'📈 Bullish' if macd_sentiment_now == 'Bullish' else '📉 Bearish'}
 🌐 Tren Global: {global_trend_now}
 🚦 Sinyal: {'🟢 ' + bias if bias else '⚪ Tidak Ada setup yang valid'}
-🔖 Harga Entry: {f'{entry_price
+🔖 Harga Entry: {f'{entry_price:.2f}' if entry_price else '-'}
+🎯 Take Profit: {f'{take_profit:.2f}' if take_profit else '-'}
+⛔ Stop Loss: {f'{stop_loss:.2f}' if stop_loss else '-'}
+📊 Risk/Reward Ratio: {rr if rr else '-'}
+"""
