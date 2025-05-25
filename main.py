@@ -5,7 +5,6 @@ import ccxt
 import ta
 import pandas as pd
 import requests
-import numpy as np
 import logging
 from datetime import datetime
 
@@ -169,22 +168,22 @@ async def price_feed():
                 rr = risk_reward_ratio(entry_price, take_profit, stop_loss)
 
                 msg = f"""
-[Analisis Real-Time BTCUSDT]
-Waktu: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
-Harga: {price}
-Tren Jangka Panjang: {long_trend_now}
-Multi Time Frame: 1H -> {trend_1h_now}, 4H -> {trend_4h_now}
-Volume Spike: {'Ya' if vol_spike_now else 'Tidak'}
-Pola Candlestick: {'Bullish Engulfing' if bullish_engulfing(df) else 'Bearish Pinbar' if bearish_pinbar(df) else 'Tidak Ada'}
-Liquidity Grab: {'Wick Down' if wick_low_now else 'Wick Up' if wick_high_now else 'Tidak Ada'}
-Sentimen Pasar (RSI): {sentiment_now}
-Sentimen MACD: {macd_sentiment_now}
-Tren Global: {global_trend_now}
-Sinyal: {bias if bias else 'Tidak Ada setup yang valid'}
-Harga Entry: {entry_price if entry_price else '-'}
-Take Profit: {take_profit if take_profit else '-'}
-Stop Loss: {stop_loss if stop_loss else '-'}
-Risk/Reward Ratio: {rr if rr else '-'}
+📊 [Analisis Real-Time BTCUSDT]
+⏰ Waktu: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+💰 Harga: {price}
+📈 Tren Jangka Panjang: {'🔼 UP' if long_trend_now == 'UP' else '🔽 DOWN'}
+⏳ Multi Time Frame: 1H -> {('🔼 UP' if trend_1h_now == 'UP' else '🔽 DOWN') if trend_1h_now else '-'}, 4H -> {('🔼 UP' if trend_4h_now == 'UP' else '🔽 DOWN') if trend_4h_now else '-'}
+📊 Volume Spike: {'⚡ Ya' if vol_spike_now else '❌ Tidak'}
+🕯️ Pola Candlestick: {'🔥 Bullish Engulfing' if bullish_engulfing(df) else '🛑 Bearish Pinbar' if bearish_pinbar(df) else '— Tidak Ada'}
+💡 Liquidity Grab: {'⬇️ Wick Down' if wick_low_now else '⬆️ Wick Up' if wick_high_now else '— Tidak Ada'}
+📉 Sentimen Pasar (RSI): {sentiment_now}
+📊 Sentimen MACD: {'📈 Bullish' if macd_sentiment_now == 'Bullish' else '📉 Bearish'}
+🌐 Tren Global: {global_trend_now}
+🚦 Sinyal: {('🟢 LONG' if bias == 'BUY' else '🔴 SHORT') if bias else '⚪ Tidak Ada setup yang valid'}
+🔖 Harga Entry: {(f'{entry_price:.2f}') if entry_price else '-'}
+🎯 Take Profit: {(f'{take_profit:.2f}') if take_profit else '-'}
+⛔ Stop Loss: {(f'{stop_loss:.2f}') if stop_loss else '-'}
+📊 Risk/Reward Ratio: {rr if rr else '-'}
 """
 
                 send_to_telegram(msg)
