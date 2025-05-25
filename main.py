@@ -101,11 +101,11 @@ def calculate_trade_levels(df, trade_type):
         entry_price = df['close'].iloc[-1]
         atr = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14).iloc[-1]
         if trade_type == 'LONG':
-            take_profit = entry_price + atr * 2
-            stop_loss = entry_price - atr
+            take_profit = entry_price + atr * 3  # sebelumnya 2
+            stop_loss = entry_price - atr * 1.5  # sebelumnya 1
         elif trade_type == 'SHORT':
-            take_profit = entry_price - atr * 2
-            stop_loss = entry_price + atr
+            take_profit = entry_price - atr * 3
+            stop_loss = entry_price + atr * 1.5
         else:
             return None, None, None
         return entry_price, take_profit, stop_loss
