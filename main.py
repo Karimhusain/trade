@@ -129,57 +129,57 @@ def risk_reward_ratio(entry, tp, sl):
 
 async def price_feed():
     url = "wss://stream.binance.com:9443/ws/btcusdt@trade"
-    last_signal = None  # Untuk cek sinyal baru
-    while True:
-        try:
-            async with websockets.connect(url) as websocket:
-                while True:
-                    message = await websocket.recv()
-                    data = json.loads(message)
-                    price = float(data['p'])
-                    logging.info(f"Harga BTC terbaru: {price}")
+    async with websockets.connect(url) as websocket:
+        while True:
+            try:
+                message = await websocket.recv()
+                data = json.loads(message)
+                price = float(data['p'])
+                logging.info(f"Harga BTC terbaru: {price}")
 
-                    df = fetch_ohlcv_safe(PAIR, '1m')
-                    if df is None:
-                        logging.warning("Tidak bisa fetch OHLCV data, skip analisa.")
-                        await asyncio.sleep(30)
-                        continue
+                # Kirim debug message supaya tahu bot jalan
+                send_to_telegram(f"Debug: Harga BTC saat ini {price:.2f}")
 
-                    calculate_indicators(df)
+                df = fetch_ohlcv_safe(PAIR, '1m')
+                if df is None:
+                    logging.warning("Tidak bisa fetch OHLCV data, skip analisa.")
+                    await asyncio.sleep(30)
+                    continue
 
-                    long_trend_now = 'UP' if df['ema50'].iloc[-1] > df['ema200'].iloc[-1] else 'DOWN'
-                    vol_spike_now = df['volume'].iloc[-1] > df['avg_vol'].iloc[-1] * 1.5
-                    wick_low_now = df['low'].iloc[-1] < df['low'].iloc[-2] and df['close'].iloc[-1] > df['low'].iloc[-1] + (df['high'].iloc[-1] - df['low'].iloc[-1]) * 0.5
-                    wick_high_now = df['high'].iloc[-1] > df['high'].iloc[-2] and df['close'].iloc[-1] < df['high'].iloc[-1] - (df['high'].iloc[-1] - df['low'].iloc[-1]) * 0.5
+                calculate_indicators(df)
 
-                    trend_1h_now, trend_4h_now = multi_timeframe_analysis()
-                    sentiment_now = 'Netral'
-                    macd_sentiment_now = 'Bullish' if df['macd'].iloc[-1] > 0 else 'Bearish'
-                    global_trend_now = macro_global_trend(df)
+                long_trend_now = 'UP' if df['ema50'].iloc[-1] > df['ema200'].iloc[-1] else 'DOWN'
+                vol_spike_now = df['volume'].iloc[-1] > df['avg_vol'].iloc[-1] * 1.5
+                wick_low_now = df['low'].iloc[-1] < df['low'].iloc[-2] and df['close'].iloc[-1] > df['low'].iloc[-1] + (df['high'].iloc[-1] - df['low'].iloc[-1]) * 0.5
+                wick_high_now = df['high'].iloc[-1] > df['high'].iloc[-2] and df['close'].iloc[-1] < df['high'].iloc[-1] - (df['high'].iloc[-1] - df['low'].iloc[-1]) * 0.5
 
-                    bias = ''
-                    entry_price, take_profit, stop_loss = None, None, None
+                trend_1h_now, trend_4h_now = multi_timeframe_analysis()
+                sentiment_now = 'Netral'
+                macd_sentiment_now = 'Bullish' if df['macd'].iloc[-1] > 0 else 'Bearish'
+                global_trend_now = macro_global_trend(df)
 
-                    if long_trend_now == 'UP' and bullish_engulfing(df) and vol_spike_now and wick_low_now:
-                        bias = 'BUY'
-                        entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'LONG')
-                    elif long_trend_now == 'DOWN' and bearish_pinbar(df) and vol_spike_now and wick_high_now:
-                        bias = 'SELL'
-                        entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'SHORT')
+                bias = ''
+                entry_price, take_profit, stop_loss = None, None, None
 
-                    rr = risk_reward_ratio(entry_price, take_profit, stop_loss)
+                if long_trend_now == 'UP' and bullish_engulfing(df) and vol_spike_now and wick_low_now:
+                    bias = 'BUY'
+                    entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'LONG')
+                elif long_trend_now == 'DOWN' and bearish_pinbar(df) and vol_spike_now and wick_high_now:
+                    bias = 'SELL'
+                    entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'SHORT')
 
-                    # Kirim pesan cuma kalau ada sinyal valid dan berbeda dari sinyal terakhir
-                    if bias and entry_price and take_profit and stop_loss:
-                        msg = f"""
+                rr = risk_reward_ratio(entry_price, take_profit, stop_loss)
+
+                if bias:
+                    msg = f"""
 📊 [Analisis Real-Time BTCUSDT]
 ⏰ Waktu: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 💰 Harga: {price:.2f}
 📈 Tren Jangka Panjang: {'🔼 UP' if long_trend_now == 'UP' else '🔽 DOWN'}
 ⏳ Multi Time Frame: 1H -> {('🔼 UP' if trend_1h_now == 'UP' else '🔽 DOWN') if trend_1h_now else '-'}, 4H -> {('🔼 UP' if trend_4h_now == 'UP' else '🔽 DOWN') if trend_4h_now else '-'}
 📊 Volume Spike: {'⚡ Ya' if vol_spike_now else '❌ Tidak'}
-🕯️ Pola Candlestick: {'🔥 Bullish Engulfing' if bias == 'BUY' else '🛑 Bearish Pinbar'}
-💡 Liquidity Grab: {'⬇️ Wick Down' if bias == 'BUY' else '⬆️ Wick Up'}
+🕯️ Pola Candlestick: {'🔥 Bullish Engulfing' if bullish_engulfing(df) else '🛑 Bearish Pinbar' if bearish_pinbar(df) else '— Tidak Ada'}
+💡 Liquidity Grab: {'⬇️ Wick Down' if wick_low_now else '⬆️ Wick Up' if wick_high_now else '— Tidak Ada'}
 📉 Sentimen Pasar (RSI): {sentiment_now}
 📊 Sentimen MACD: {'📈 Bullish' if macd_sentiment_now == 'Bullish' else '📉 Bearish'}
 🌐 Tren Global: {global_trend_now}
@@ -189,22 +189,18 @@ async def price_feed():
 ⛔ Stop Loss: {stop_loss:.2f}
 📊 Risk/Reward Ratio: {rr if rr else '-'}
 """
-                        if last_signal != msg:
-                            send_to_telegram(msg)
-                            logging.info("Sinyal terkirim ke Telegram.")
-                            last_signal = msg
-                    else:
-                        # Jika tidak ada sinyal, reset last_signal supaya bisa kirim sinyal baru nanti
-                        last_signal = None
+                    send_to_telegram(msg)
 
-                    await asyncio.sleep(5)  # cek setiap 5 detik untuk respons lebih cepat
+                await asyncio.sleep(1800)  # delay 30 menit
 
-        except Exception as e:
-            logging.error(f"Error di price_feed loop: {e}")
-            await asyncio.sleep(10)  # delay lebih singkat untuk coba reconnect
+            except Exception as e:
+                logging.error(f"Error di price_feed loop: {e}")
+                await asyncio.sleep(30)
 
 if __name__ == '__main__':
     logging.info("Bot mulai berjalan...")
+    send_to_telegram("Bot analisis BTCUSDT sudah mulai berjalan...")
+
     try:
         asyncio.run(price_feed())
     except Exception as e:
