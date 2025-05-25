@@ -137,9 +137,6 @@ async def price_feed():
                 price = float(data['p'])
                 logging.info(f"Harga BTC terbaru: {price}")
 
-                # Kirim debug message supaya tahu bot jalan
-                send_to_telegram(f"Debug: Harga BTC saat ini {price:.2f}")
-
                 df = fetch_ohlcv_safe(PAIR, '1m')
                 if df is None:
                     logging.warning("Tidak bisa fetch OHLCV data, skip analisa.")
@@ -167,14 +164,19 @@ async def price_feed():
                 elif long_trend_now == 'DOWN' and bearish_pinbar(df) and vol_spike_now and wick_high_now:
                     bias = 'SELL'
                     entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'SHORT')
+                elif long_trend_now == 'UP' and df['macd'].iloc[-1] > 0 and df['rsi'].iloc[-1] < 70:
+                    bias = 'BUY'
+                    entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'LONG')
+                elif long_trend_now == 'DOWN' and df['macd'].iloc[-1] < 0 and df['rsi'].iloc[-1] > 30:
+                    bias = 'SELL'
+                    entry_price, take_profit, stop_loss = calculate_trade_levels(df, 'SHORT')
 
                 rr = risk_reward_ratio(entry_price, take_profit, stop_loss)
 
-                if bias:
-                    msg = f"""
+                msg = f"""
 📊 [Analisis Real-Time BTCUSDT]
 ⏰ Waktu: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
-💰 Harga: {price:.2f}
+💰 Harga: {price}
 📈 Tren Jangka Panjang: {'🔼 UP' if long_trend_now == 'UP' else '🔽 DOWN'}
 ⏳ Multi Time Frame: 1H -> {('🔼 UP' if trend_1h_now == 'UP' else '🔽 DOWN') if trend_1h_now else '-'}, 4H -> {('🔼 UP' if trend_4h_now == 'UP' else '🔽 DOWN') if trend_4h_now else '-'}
 📊 Volume Spike: {'⚡ Ya' if vol_spike_now else '❌ Tidak'}
@@ -183,13 +185,16 @@ async def price_feed():
 📉 Sentimen Pasar (RSI): {sentiment_now}
 📊 Sentimen MACD: {'📈 Bullish' if macd_sentiment_now == 'Bullish' else '📉 Bearish'}
 🌐 Tren Global: {global_trend_now}
-🚦 Sinyal: {'🟢 LONG' if bias == 'BUY' else '🔴 SHORT'}
-🔖 Harga Entry: {entry_price:.2f}
-🎯 Take Profit: {take_profit:.2f}
-⛔ Stop Loss: {stop_loss:.2f}
+🚦 Sinyal: {('🟢 LONG' if bias == 'BUY' else '🔴 SHORT') if bias else '⚪ Tidak Ada setup yang valid'}
+🔖 Harga Entry: {(f'{entry_price:.2f}') if entry_price else '-'}
+🎯 Take Profit: {(f'{take_profit:.2f}') if take_profit else '-'}
+⛔ Stop Loss: {(f'{stop_loss:.2f}') if stop_loss else '-'}
 📊 Risk/Reward Ratio: {rr if rr else '-'}
 """
+                if bias:
                     send_to_telegram(msg)
+                else:
+                    logging.info("Tidak ada setup valid, tidak kirim ke Telegram.")
 
                 await asyncio.sleep(1800)  # delay 30 menit
 
@@ -199,8 +204,6 @@ async def price_feed():
 
 if __name__ == '__main__':
     logging.info("Bot mulai berjalan...")
-    send_to_telegram("Bot analisis BTCUSDT sudah mulai berjalan...")
-
     try:
         asyncio.run(price_feed())
     except Exception as e:
